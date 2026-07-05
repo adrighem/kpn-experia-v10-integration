@@ -14,8 +14,8 @@ Mode: Maintain -> Ship
 
 ## Top Recommendation
 
-1. Push the local `ISSUE:11` follow-up fix and let release-please prepare the next patch release.
-2. Ask the reporter to verify that the uptime graph no longer dips around reconnect.
+1. Let release-please prepare the next patch release for the `ISSUE:11` follow-up fix.
+2. Ask the reporter to verify that the uptime graph no longer dips around reconnect after the release is available.
 3. Clean root-level scratch artifacts before any unrelated maintenance or release work.
 
 ## Work Completed
@@ -26,6 +26,8 @@ Mode: Maintain -> Ship
 - Kept the throughput baseline unchanged while preserved traffic counters are reused.
 - Added a reboot guard so all-zero traffic counters are accepted when uptime confirms a real reboot.
 - Updated maintainer notes, state, backlog, decisions, patterns, contributors, and relationship index.
+- Pushed follow-up fix commit a978b66 to `master`.
+- Posted the approved owner comment on `ISSUE:11`.
 
 ## Verification
 
@@ -39,4 +41,7 @@ Mode: Maintain -> Ship
 
 ## Public Action Status
 
-- No public GitHub action taken for this follow-up.
+Public action completed:
+
+- Pushed a978b66 to `master`.
+- Commented on `ISSUE:11`: https://github.com/adrighem/ha-kpn-experia-v10/issues/11#issuecomment-4886278614

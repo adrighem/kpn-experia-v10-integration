@@ -69,4 +69,6 @@ Verification:
 
 Public action status:
 
-- No public action taken for this follow-up yet.
+- Follow-up fix pushed to `master` in a978b66 on 2026-07-05.
+- Owner comment posted on 2026-07-05:
+  - https://github.com/adrighem/ha-kpn-experia-v10/issues/11#issuecomment-4886278614
