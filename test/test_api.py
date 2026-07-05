@@ -1,6 +1,6 @@
 """Test the ExperiaBox v10 API."""
 from json import JSONDecodeError
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 from custom_components.experiaboxv10.api import (
     ExperiaBoxV10Api,
@@ -488,6 +488,66 @@ async def test_get_context_reuses_context_with_empty_cookie(api, mock_session):
     assert first_context == ("abc", "")
     assert second_context == ("abc", "")
     assert mock_session.post.call_count == 1
+
+@pytest.mark.asyncio
+async def test_get_context_records_creation_time(api, mock_session):
+    """Test successful login records when the context was created."""
+    mock_login_resp = create_mock_response(
+        status=200,
+        json_data={"data": {"contextID": "abc"}},
+    )
+    mock_session.post.return_value = mock_login_resp
+
+    with patch("custom_components.experiaboxv10.api.time.monotonic", return_value=123.0):
+        await api._get_context()
+
+    assert api._context_created_at == 123.0
+
+@pytest.mark.asyncio
+async def test_request_reuses_context_before_proactive_refresh_interval(api, mock_session):
+    """Test requests keep using a recent cached context."""
+    api._context_id = "abc"
+    api._cookie = "sid=abc"
+    api._context_created_at = 100.0
+    mock_data_resp = create_mock_response(status=200, json_data={"status": {"UpTime": 123}})
+    mock_session.post.return_value = mock_data_resp
+
+    with patch("custom_components.experiaboxv10.api.time.monotonic", return_value=1000.0):
+        data = await api._request("NMC", "get", endpoint="ws")
+
+    request_headers = mock_session.post.call_args.kwargs["headers"]
+    assert data == {"status": {"UpTime": 123}}
+    assert request_headers["X-Context"] == "abc"
+    assert request_headers["Cookie"] == "sid=abc"
+    assert mock_session.post.call_count == 1
+
+@pytest.mark.asyncio
+async def test_request_refreshes_context_before_timeout(api, mock_session):
+    """Test old cached contexts are renewed before the router timeout."""
+    api._context_id = "abc"
+    api._cookie = "sid=abc"
+    api._context_created_at = 100.0
+    mock_login_resp = create_mock_response(
+        status=200,
+        json_data={"data": {"contextID": "def"}},
+        headers={"set-cookie": "sid=def; Path=/"},
+    )
+    mock_data_resp = create_mock_response(status=200, json_data={"status": {"UpTime": 456}})
+    mock_session.post.side_effect = [mock_login_resp, mock_data_resp]
+
+    with patch("custom_components.experiaboxv10.api.time.monotonic", return_value=1601.0):
+        data = await api._request("NMC", "get", endpoint="ws")
+
+    login_payload = mock_session.post.call_args_list[0].kwargs["json"]
+    request_headers = mock_session.post.call_args_list[1].kwargs["headers"]
+    assert login_payload["method"] == "createContext"
+    assert data == {"status": {"UpTime": 456}}
+    assert api._context_id == "def"
+    assert api._cookie == "sid=def"
+    assert api._context_created_at == 1601.0
+    assert request_headers["X-Context"] == "def"
+    assert request_headers["Cookie"] == "sid=def"
+    assert mock_session.post.call_count == 2
 
 @pytest.mark.asyncio
 async def test_get_devices_raises_when_all_endpoints_fail(api):

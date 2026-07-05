@@ -6,6 +6,7 @@ from collections import namedtuple
 import asyncio
 import logging
 from json import JSONDecodeError
+import time
 from typing import Any
 from aiohttp import ClientSession
 
@@ -33,6 +34,7 @@ _OPTIONAL_PERMISSION_DENIED_SERVICES = {
     "NeMo.Intf.eth0",
     "NMC.Wifi",
 }
+_CONTEXT_REFRESH_INTERVAL = 25 * 60
 
 
 class ExperiaBoxV10ApiError(Exception):
@@ -60,6 +62,7 @@ class ExperiaBoxV10Api:
         self._password = password
         self._context_id: str | None = None
         self._cookie: str | None = None
+        self._context_created_at: float | None = None
         self._user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         self._login_lock = asyncio.Lock()
 
@@ -67,6 +70,13 @@ class ExperiaBoxV10Api:
         """Clear cached router login context."""
         self._context_id = None
         self._cookie = None
+        self._context_created_at = None
+
+    def _context_refresh_due(self) -> bool:
+        """Return true when the cached context should be renewed proactively."""
+        if self._context_created_at is None:
+            return False
+        return time.monotonic() - self._context_created_at >= _CONTEXT_REFRESH_INTERVAL
 
     def _extract_error_details(self, data: dict[str, Any]) -> tuple[str | None, str]:
         """Extract router error code and text from known response shapes."""
@@ -139,6 +149,10 @@ class ExperiaBoxV10Api:
     async def _get_context(self) -> tuple[str, str]:
         """Get context ID and cookie for the JSON API."""
         async with self._login_lock:
+            if self._context_refresh_due():
+                _LOGGER.debug("Refreshing router context before session timeout")
+                self._clear_context()
+
             # Check if another task already got the context while we were waiting
             if self._context_id and self._cookie is not None:
                 return self._context_id, self._cookie
@@ -193,6 +207,7 @@ class ExperiaBoxV10Api:
                         
                     cookie_header = response_headers.get("set-cookie", "")
                     self._cookie = cookie_header.split(";")[0] if cookie_header else ""
+                    self._context_created_at = time.monotonic()
                     return self._context_id, self._cookie
                 except KeyError as err:
                     _LOGGER.error("Context key error: %s, raw response: %s", err, data)
@@ -210,7 +225,11 @@ class ExperiaBoxV10Api:
         retry_on_auth_error: bool = True,
     ) -> dict[str, Any]:
         """Make a request to the router API."""
-        if not self._context_id or self._cookie is None:
+        if (
+            not self._context_id
+            or self._cookie is None
+            or self._context_refresh_due()
+        ):
             await self._get_context()
 
         # Only override default if it's the standard gateway and we know these services need root /ws
