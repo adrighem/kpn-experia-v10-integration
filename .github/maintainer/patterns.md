@@ -5,6 +5,7 @@
 - Real router responses can vary by firmware state. Preserve tests around API error handling and add fixtures for every newly observed router response shape.
 - Firmware `V10.C.25.08.15` can deny optional `NeMo.Intf.eth0` traffic stats and `NMC.Wifi` status calls with application error `13`; avoid warning spam when core data still updates.
 - Firmware `V10.C.25.08.15` can also deny `Devices.Device.guest` with application error `13`; after first data is available, preserve the last device list and avoid warning spam.
+- Firmware `V10.C.25.08.15` also has a 30-minute router HTTP session timeout; stale-session handling should renew context from multiple auth response shapes, including core-service error `13`, and should include tests for each observed shape.
 
 ## Release hygiene
 

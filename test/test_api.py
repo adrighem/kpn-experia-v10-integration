@@ -1,4 +1,5 @@
 """Test the ExperiaBox v10 API."""
+from json import JSONDecodeError
 from unittest.mock import MagicMock, AsyncMock
 import pytest
 from custom_components.experiaboxv10.api import (
@@ -197,6 +198,93 @@ async def test_request_does_not_retry_invalid_arguments(api, mock_session):
     assert mock_session.post.call_count == 2
 
 @pytest.mark.asyncio
+async def test_request_retries_nested_status_auth_error(api, mock_session):
+    """Test nested router auth errors trigger one relogin and retry."""
+    mock_login_resp_1 = create_mock_response(status=200, json_data={"data": {"contextID": "abc"}})
+    mock_expired_resp = create_mock_response(
+        status=200,
+        json_data={
+            "status": {
+                "errors": [
+                    {
+                        "error": "196614",
+                        "description": "Invalid session",
+                    }
+                ]
+            }
+        },
+    )
+    mock_login_resp_2 = create_mock_response(status=200, json_data={"data": {"contextID": "def"}})
+    mock_data_resp = create_mock_response(status=200, json_data={"status": {"UpTime": 123}})
+    mock_session.post.side_effect = [
+        mock_login_resp_1,
+        mock_expired_resp,
+        mock_login_resp_2,
+        mock_data_resp,
+    ]
+
+    data = await api._request("NMC", "get", endpoint="ws")
+
+    assert data == {"status": {"UpTime": 123}}
+    assert api._context_id == "def"
+    assert mock_session.post.call_count == 4
+
+@pytest.mark.asyncio
+async def test_request_retries_non_json_session_timeout_response(api, mock_session):
+    """Test a login-page-style non-JSON timeout response triggers one relogin."""
+    mock_login_resp_1 = create_mock_response(status=200, json_data={"data": {"contextID": "abc"}})
+    mock_timeout_resp = create_mock_response(status=200)
+    mock_timeout_resp.json = AsyncMock(
+        side_effect=JSONDecodeError("Expecting value", "<html>Login</html>", 0)
+    )
+    mock_login_resp_2 = create_mock_response(status=200, json_data={"data": {"contextID": "def"}})
+    mock_data_resp = create_mock_response(status=200, json_data={"status": {"UpTime": 456}})
+    mock_session.post.side_effect = [
+        mock_login_resp_1,
+        mock_timeout_resp,
+        mock_login_resp_2,
+        mock_data_resp,
+    ]
+
+    data = await api._request("NMC", "get", endpoint="ws")
+
+    assert data == {"status": {"UpTime": 456}}
+    assert api._context_id == "def"
+    assert mock_session.post.call_count == 4
+
+@pytest.mark.asyncio
+async def test_request_retries_core_permission_denied(api, mock_session):
+    """Test core permission-denied responses are treated as expired context."""
+    mock_login_resp_1 = create_mock_response(status=200, json_data={"data": {"contextID": "abc"}})
+    mock_expired_resp = create_mock_response(
+        status=200,
+        json_data={
+            "status": None,
+            "errors": [
+                {
+                    "error": 13,
+                    "description": "Permission denied",
+                    "info": "Devices",
+                }
+            ],
+        },
+    )
+    mock_login_resp_2 = create_mock_response(status=200, json_data={"data": {"contextID": "def"}})
+    mock_data_resp = create_mock_response(status=200, json_data={"status": []})
+    mock_session.post.side_effect = [
+        mock_login_resp_1,
+        mock_expired_resp,
+        mock_login_resp_2,
+        mock_data_resp,
+    ]
+
+    data = await api._request("Devices", "get")
+
+    assert data == {"status": []}
+    assert api._context_id == "def"
+    assert mock_session.post.call_count == 4
+
+@pytest.mark.asyncio
 async def test_request_raises_permission_denied_without_clearing_context(api, mock_session):
     """Test that permission denied API errors are classified without forcing relogin."""
     mock_login_resp = create_mock_response(status=200, json_data={"data": {"contextID": "abc"}})
@@ -217,6 +305,31 @@ async def test_request_raises_permission_denied_without_clearing_context(api, mo
 
     with pytest.raises(ExperiaBoxV10PermissionDeniedError):
         await api._request("NeMo.Intf.eth0", "getNetDevStats", endpoint="ws")
+
+    assert api._context_id == "abc"
+    assert mock_session.post.call_count == 2
+
+@pytest.mark.asyncio
+async def test_optional_permission_denied_does_not_clear_context(api, mock_session):
+    """Test optional permission-denied responses are not treated as expired context."""
+    mock_login_resp = create_mock_response(status=200, json_data={"data": {"contextID": "abc"}})
+    mock_error_resp = create_mock_response(
+        status=200,
+        json_data={
+            "status": None,
+            "errors": [
+                {
+                    "error": 13,
+                    "description": "Permission denied",
+                    "info": "NMC.Wifi",
+                }
+            ],
+        },
+    )
+    mock_session.post.side_effect = [mock_login_resp, mock_error_resp]
+
+    with pytest.raises(ExperiaBoxV10PermissionDeniedError):
+        await api._request("NMC.Wifi", "get", endpoint="ws")
 
     assert api._context_id == "abc"
     assert mock_session.post.call_count == 2
@@ -245,6 +358,22 @@ async def test_fallback_login_uses_fallback_cookie(api, mock_session):
 
     request_headers = mock_session.post.call_args_list[2].kwargs["headers"]
     assert request_headers["Cookie"] == "fallback=1"
+
+@pytest.mark.asyncio
+async def test_get_context_reuses_context_with_empty_cookie(api, mock_session):
+    """Test login lock waiters reuse a context even when no cookie was set."""
+    mock_login_resp = create_mock_response(
+        status=200,
+        json_data={"data": {"contextID": "abc"}},
+    )
+    mock_session.post.return_value = mock_login_resp
+
+    first_context = await api._get_context()
+    second_context = await api._get_context()
+
+    assert first_context == ("abc", "")
+    assert second_context == ("abc", "")
+    assert mock_session.post.call_count == 1
 
 @pytest.mark.asyncio
 async def test_get_devices_raises_when_all_endpoints_fail(api):

@@ -1,5 +1,14 @@
 # Maintainer Decisions
 
+## 2026-07-05 - Broaden stale-session renewal handling
+
+- `ISSUE:11` reports that firmware `V10.C.25.08.15` stops updating after the router's 30-minute HTTP session timeout.
+- No exact expired-session payload was provided, so the fix targets likely router-auth response shapes while preserving single-retry behavior.
+- Decided to extract auth errors from root, `status`, and `data` objects and to retry once on non-JSON router responses, which likely represent a login page after timeout.
+- Decided to reuse cached contexts with empty cookies inside the login lock, because request handling already treats an empty cookie as valid.
+- Compared the Domoticz plugin and found it retries router error `13` after clearing context, which likely explains why it recovers from the timeout.
+- Decided to retry error `13` for core services, but keep known optional endpoints (`Devices.Device.guest`, `NeMo.Intf.eth0`, `NMC.Wifi`) as permission-denied partial failures so the `ISSUE:8` behavior remains intact.
+
 ## 2026-06-28 - Suppress recurring device permission-denied warnings after initial load
 
 - `ISSUE:8` received a post-release follow-up after `v3.2.2`: firmware `V10.C.25.08.15` can also deny `Devices.Device.guest` with router error `13`.

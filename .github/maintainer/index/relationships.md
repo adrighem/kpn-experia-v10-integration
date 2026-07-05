@@ -4,3 +4,4 @@
 - `PR:3` -> release `v3.2.0`: release-please PR that tagged and published the current release.
 - `ISSUE:8` -> local maintainer fix: classify router error `13` and debug-log optional permission-denied endpoints.
 - `ISSUE:8:C:3` -> local maintainer follow-up fix: debug-log recurring `Devices.Device.guest` permission-denied device refresh failures after previous data exists.
+- `ISSUE:11` -> local maintainer fix: broaden stale-session detection and retry once after nested auth errors or non-JSON timeout responses.

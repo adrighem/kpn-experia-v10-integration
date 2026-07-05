@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import namedtuple
 import asyncio
 import logging
+from json import JSONDecodeError
 from typing import Any
 from aiohttp import ClientSession
 
@@ -18,6 +19,20 @@ WanInfo = namedtuple("WanInfo", ["external_ip", "connected", "link_status"])
 TrafficInfo = namedtuple(
     "TrafficInfo", ["bytes_sent", "bytes_received", "packets_sent", "packets_received"]
 )
+
+_AUTH_ERROR_CODES = {"196621", "196614"}
+_AUTH_ERROR_TEXT_MARKERS = (
+    "invalid session",
+    "session expired",
+    "session timeout",
+    "not authenticated",
+    "authentication",
+)
+_OPTIONAL_PERMISSION_DENIED_SERVICES = {
+    "Devices.Device.guest",
+    "NeMo.Intf.eth0",
+    "NMC.Wifi",
+}
 
 
 class ExperiaBoxV10ApiError(Exception):
@@ -53,11 +68,79 @@ class ExperiaBoxV10Api:
         self._context_id = None
         self._cookie = None
 
+    def _extract_error_details(self, data: dict[str, Any]) -> tuple[str | None, str]:
+        """Extract router error code and text from known response shapes."""
+        details: list[Any] = [data]
+
+        for key in ("status", "data"):
+            value = data.get(key)
+            if isinstance(value, dict):
+                details.append(value)
+
+        for detail in details:
+            if not isinstance(detail, dict):
+                continue
+
+            error_code = detail.get("error")
+            error_text_parts = [
+                str(detail.get(key, ""))
+                for key in ("description", "info", "message", "reason")
+            ]
+
+            errors = detail.get("errors")
+            if isinstance(errors, list) and errors:
+                first_error = errors[0]
+                if isinstance(first_error, dict):
+                    error_code = first_error.get("error", error_code)
+                    error_text_parts.extend(
+                        str(first_error.get(key, ""))
+                        for key in ("description", "info", "message", "reason")
+                    )
+
+            if error_code is not None:
+                return str(error_code), " ".join(error_text_parts).lower()
+
+        return None, ""
+
+    def _is_auth_error(self, error_code: str | None, error_text: str) -> bool:
+        """Return true when a router error should trigger session renewal."""
+        if error_code in _AUTH_ERROR_CODES:
+            return True
+
+        return bool(error_text) and any(
+            marker in error_text for marker in _AUTH_ERROR_TEXT_MARKERS
+        )
+
+    def _should_retry_permission_denied(self, service: str) -> bool:
+        """Return true when permission denied likely means the context expired."""
+        return service not in _OPTIONAL_PERMISSION_DENIED_SERVICES
+
+    async def _retry_after_auth_error(
+        self,
+        service: str,
+        method: str,
+        parameters: dict | None,
+        endpoint: str,
+        retry_on_auth_error: bool,
+        error_message: str,
+    ) -> dict[str, Any]:
+        """Clear cached login data and retry once after an auth failure."""
+        self._clear_context()
+        if retry_on_auth_error:
+            return await self._request(
+                service,
+                method,
+                parameters,
+                endpoint,
+                retry_on_auth_error=False,
+            )
+        raise ExperiaBoxV10AuthenticationError(error_message)
+
     async def _get_context(self) -> tuple[str, str]:
         """Get context ID and cookie for the JSON API."""
         async with self._login_lock:
             # Check if another task already got the context while we were waiting
-            if self._context_id and self._cookie:
+            if self._context_id and self._cookie is not None:
                 return self._context_id, self._cookie
                 
             from aiohttp import ClientTimeout
@@ -150,48 +233,58 @@ class ExperiaBoxV10Api:
         try:
             async with self._session.post(url, headers=headers, json=payload) as resp:
                 if resp.status in (401, 403):
-                    self._clear_context()
-                    if retry_on_auth_error:
-                        return await self._request(
+                    return await self._retry_after_auth_error(
+                        service,
+                        method,
+                        parameters,
+                        endpoint,
+                        retry_on_auth_error,
+                        f"Router authentication failed with HTTP {resp.status}"
+                    )
+
+                resp.raise_for_status()
+                try:
+                    data = await resp.json(content_type=None)
+                except JSONDecodeError as err:
+                    try:
+                        return await self._retry_after_auth_error(
                             service,
                             method,
                             parameters,
                             endpoint,
-                            retry_on_auth_error=False,
+                            retry_on_auth_error,
+                            "Router returned a non-JSON response after authentication retry",
                         )
-                    raise ExperiaBoxV10AuthenticationError(
-                        f"Router authentication failed with HTTP {resp.status}"
-                    )
-                
-                resp.raise_for_status()
-                data = await resp.json(content_type=None)
-                
+                    except ExperiaBoxV10AuthenticationError as auth_err:
+                        raise auth_err from err
+
                 # Check for application-level errors
                 if isinstance(data, dict):
-                    # Check both "error" string/int and "errors" list structure
-                    error_code = data.get("error")
-                    if "errors" in data and isinstance(data["errors"], list) and len(data["errors"]) > 0:
-                        error_code = data["errors"][0].get("error")
-                        
+                    error_code, error_text = self._extract_error_details(data)
+
                     if error_code is not None:
-                        # 196621/196614 = Access Denied / Invalid Session
-                        if str(error_code) in ("196621", "196614"):
-                            self._clear_context()
-                            if retry_on_auth_error:
-                                return await self._request(
+                        if self._is_auth_error(error_code, error_text):
+                            return await self._retry_after_auth_error(
+                                service,
+                                method,
+                                parameters,
+                                endpoint,
+                                retry_on_auth_error,
+                                f"Router session expired after retry: {data}"
+                            )
+                        elif error_code == "196618" and service == "sah.Device.WiFi.Radio":
+                            _LOGGER.debug("Ignoring 196618 error for WiFi Radio (disabled)")
+                            return {}
+                        elif error_code == "13":
+                            if self._should_retry_permission_denied(service):
+                                return await self._retry_after_auth_error(
                                     service,
                                     method,
                                     parameters,
                                     endpoint,
-                                    retry_on_auth_error=False,
+                                    retry_on_auth_error,
+                                    f"Router permission denied after authentication retry: {data}"
                                 )
-                            raise ExperiaBoxV10AuthenticationError(
-                                f"Router session expired after retry: {data}"
-                            )
-                        elif str(error_code) == "196618" and service == "sah.Device.WiFi.Radio":
-                            _LOGGER.debug("Ignoring 196618 error for WiFi Radio (disabled)")
-                            return {}
-                        elif str(error_code) == "13":
                             raise ExperiaBoxV10PermissionDeniedError(
                                 f"Router API returned permission denied for {service}: {data}"
                             )
