@@ -1,9 +1,17 @@
 # Maintainer Decisions
 
+## 2026-07-05 - Proactively renew context before router session timeout
+
+- Follow-up question asked whether the integration can prevent reconnect symptoms instead of only handling the first expired-session response.
+- No separate router refresh-token endpoint was found. The practical renewal mechanism is to create a new context with `sah.Device.Information:createContext`.
+- Decided to track context creation time and renew the cached context after 25 minutes, before the reported 30-minute router timeout.
+- Decided to keep reactive stale-session retries as a backstop for routers that invalidate contexts earlier or return unexpected auth failures.
+- This supersedes the earlier same-day decision not to schedule proactive relogins; the implementation is small and stays inside the existing login lock.
+
 ## 2026-07-05 - Preserve transient zero values around session renewal
 
 - `ISSUE:11` reporter confirmed `v3.2.4` keeps the router session active after timeout, but reported a brief uptime graph dip to `0` near reconnect.
-- Decided not to schedule proactive reloads/relogins. The existing renewal path works and proactive refresh would add timing complexity and more router traffic.
+- Initial decision was not to schedule proactive reloads/relogins because the existing renewal path worked and proactive refresh added timing complexity. This was superseded later the same day by the 25-minute proactive context renewal decision.
 - Decided to preserve previous uptime when a successful poll briefly returns uptime `0` after previous nonzero data. A real reboot should still be visible on the next nonzero lower uptime value.
 - Decided to preserve all-zero traffic counters after previous nonzero counters and not advance the throughput baseline while those preserved counters are reused.
 - Decided to accept all-zero traffic counters when a lower nonzero uptime confirms a real router reboot.

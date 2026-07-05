@@ -72,3 +72,26 @@ Public action status:
 - Follow-up fix pushed to `master` in a978b66 on 2026-07-05.
 - Owner comment posted on 2026-07-05:
   - https://github.com/adrighem/ha-kpn-experia-v10/issues/11#issuecomment-4886278614
+
+## 2026-07-05 Proactive Renewal Investigation
+
+User asked whether the integration can prevent the reconnect edge by refreshing before the router's session timeout.
+
+Findings:
+
+- No separate refresh-token or keepalive endpoint was found in the current integration, local traces, or the Domoticz implementation.
+- The supported session creation path is still `sah.Device.Information:createContext`.
+- The Domoticz implementation uses the same reactive retry model; it does not proactively refresh.
+
+Follow-up implemented and pushed:
+
+- Track when the current router context was created.
+- Renew the cached context before making a data request once it is older than 25 minutes.
+- Use the existing login lock so concurrent coordinator requests share one proactive renewal.
+- Keep reactive retry-on-auth-error behavior as a fallback for shorter router timeouts or unexpected invalidation.
+- Pushed to `master` in 04762c4 on 2026-07-05.
+
+Verification:
+
+- `PYTHONPATH=. uv run --with aiohttp --with voluptuous --with pytest --with pytest-asyncio pytest test/test_api.py`: 22 passed.
+- `PYTHONPATH=. uv run --with aiohttp --with voluptuous --with pytest --with pytest-asyncio pytest`: 49 passed.

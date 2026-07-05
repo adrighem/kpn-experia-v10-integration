@@ -14,7 +14,7 @@ Mode: Maintain -> Ship
 
 ## Top Recommendation
 
-1. Let release-please prepare the next patch release for the `ISSUE:11` follow-up fix.
+1. Monitor release-please for the proactive context-renewal patch release update to `PR:13`.
 2. Ask the reporter to verify that the uptime graph no longer dips around reconnect after the release is available.
 3. Clean root-level scratch artifacts before any unrelated maintenance or release work.
 
@@ -28,20 +28,26 @@ Mode: Maintain -> Ship
 - Updated maintainer notes, state, backlog, decisions, patterns, contributors, and relationship index.
 - Pushed follow-up fix commit a978b66 to `master`.
 - Posted the approved owner comment on `ISSUE:11`.
+- Investigated proactive renewal after the user follow-up and pushed 25-minute context refresh commit 04762c4.
 
 ## Verification
 
 - `PYTHONPATH=. uv run --with aiohttp --with voluptuous --with pytest --with pytest-asyncio pytest test/test_coordinator_entities.py`: 13 passed.
 - `PYTHONPATH=. uv run --with aiohttp --with voluptuous --with pytest --with pytest-asyncio pytest`: 46 passed.
+- Proactive renewal follow-up:
+  - `PYTHONPATH=. uv run --with aiohttp --with voluptuous --with pytest --with pytest-asyncio pytest test/test_api.py`: 22 passed.
+  - `PYTHONPATH=. uv run --with aiohttp --with voluptuous --with pytest --with pytest-asyncio pytest`: 49 passed.
 
 ## Risks
 
 - The exact router payload around reconnect is still unknown, so the fix targets the observed symptom conservatively.
 - A true reboot can briefly report uptime `0`; this fix suppresses only that zero sample when previous nonzero data exists, then accepts the next nonzero lower uptime value.
+- It is not confirmed on real hardware whether creating a new context before expiry invalidates any parallel Web UI session, but the integration already uses the same create-context flow for reactive renewal.
 
 ## Public Action Status
 
 Public action completed:
 
 - Pushed a978b66 to `master`.
+- Pushed 04762c4 to `master`.
 - Commented on `ISSUE:11`: https://github.com/adrighem/ha-kpn-experia-v10/issues/11#issuecomment-4886278614
