@@ -43,4 +43,8 @@ Action: implemented a local fix that broadens stale-session handling without mak
 
 ## Public Action Status
 
-No public action taken yet. Suggested owner comment is pending human approval.
+Fix pushed to `master` in 1148e94 on 2026-07-05.
+
+Owner comment posted on 2026-07-05:
+
+- https://github.com/adrighem/ha-kpn-experia-v10/issues/11#issuecomment-4884962056

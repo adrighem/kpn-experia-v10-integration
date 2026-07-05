@@ -15,8 +15,8 @@ Mode: Maintain -> Ship
 
 ## Top Recommendation
 
-1. Ship the local `ISSUE:11` session renewal fix as a patch release after review.
-2. Post a short reply on `ISSUE:11` once approved, saying a fix has been prepared and asking the reporter to verify the next version.
+1. Let release-please prepare the next patch release for the `ISSUE:11` session renewal fix.
+2. Ask the reporter to verify the next version without their 20-minute reload automation.
 3. Clean root-level scratch artifacts before committing or releasing.
 
 ## Work Completed
@@ -27,6 +27,8 @@ Mode: Maintain -> Ship
 - Aligned login-lock context reuse with existing empty-cookie request behavior to avoid redundant relogins.
 - Added regression tests in `test/test_api.py`.
 - Updated maintainer notes, state, backlog, decisions, patterns, contributors, and relationship index.
+- Pushed fix commit 1148e94 to `master`.
+- Posted the approved owner comment on `ISSUE:11`.
 
 ## Verification
 
@@ -40,4 +42,7 @@ Mode: Maintain -> Ship
 
 ## Public Action Status
 
-No public GitHub action was taken. A public comment draft is pending human approval.
+Public action completed:
+
+- Pushed 1148e94 to `master`.
+- Commented on `ISSUE:11`: https://github.com/adrighem/ha-kpn-experia-v10/issues/11#issuecomment-4884962056
