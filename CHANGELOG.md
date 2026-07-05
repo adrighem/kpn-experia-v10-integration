@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.2.4](https://github.com/adrighem/ha-kpn-experia-v10/compare/v3.2.3...v3.2.4) (2026-07-05)
+
+
+### Bug Fixes
+
+* renew router session after timeout ([1148e94](https://github.com/adrighem/ha-kpn-experia-v10/commit/1148e949fed136da3873b49c332a7da9b195a6a4)), closes [#11](https://github.com/adrighem/ha-kpn-experia-v10/issues/11)
+* use NMC.Guest for guest wifi ([72d1c48](https://github.com/adrighem/ha-kpn-experia-v10/commit/72d1c4842c1824d6a858f297b889cb136c1d3047))
+
 ## [3.2.3](https://github.com/adrighem/ha-kpn-experia-v10/compare/v3.2.2...v3.2.3) (2026-06-28)
 
 
