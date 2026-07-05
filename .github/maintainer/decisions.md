@@ -1,5 +1,13 @@
 # Maintainer Decisions
 
+## 2026-07-05 - Preserve transient zero values around session renewal
+
+- `ISSUE:11` reporter confirmed `v3.2.4` keeps the router session active after timeout, but reported a brief uptime graph dip to `0` near reconnect.
+- Decided not to schedule proactive reloads/relogins. The existing renewal path works and proactive refresh would add timing complexity and more router traffic.
+- Decided to preserve previous uptime when a successful poll briefly returns uptime `0` after previous nonzero data. A real reboot should still be visible on the next nonzero lower uptime value.
+- Decided to preserve all-zero traffic counters after previous nonzero counters and not advance the throughput baseline while those preserved counters are reused.
+- Decided to accept all-zero traffic counters when a lower nonzero uptime confirms a real router reboot.
+
 ## 2026-07-05 - Prefer NMC.Guest for guest Wi-Fi
 
 - The Domoticz Experia v10 plugin uses `NMC.Guest` for guest Wi-Fi get/set after moving away from scanning `sah.Device.WiFi.Radio`.

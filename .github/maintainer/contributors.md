@@ -10,6 +10,7 @@
 ## gschot
 
 - Reported `ISSUE:11`, stale router session after the router's 30-minute timeout on firmware `V10.C.25.08.15`.
+- Confirmed `v3.2.4` keeps the router connection active, then reported a follow-up uptime graph dip to `0` around reconnect.
 - Signal quality: actionable real-device report, but exact expired-session payload/logs are still unknown.
 
 ## adrighem

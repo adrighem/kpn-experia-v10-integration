@@ -2,6 +2,7 @@
 
 | Date | Mode | Report | Summary |
 | --- | --- | --- | --- |
+| 2026-07-05 | Maintain -> Ship | `.github/maintainer/reports/2026-07-05T13-47-25Z/summary.md` | `ISSUE:11` follow-up triaged; local transient zero-value preservation fix implemented and tested; no public action taken. |
 | 2026-07-05 | Maintain -> Ship | `.github/maintainer/reports/2026-07-05T05-16-17Z/summary.md` | `ISSUE:11` triaged; stale-session renewal fix pushed in 1148e94; owner response posted. |
 | 2026-06-28 | Maintain -> Ship | `.github/maintainer/reports/2026-06-28T20-29-26Z/summary.md` | Closed `ISSUE:8` received a post-release device permission-denied warning; follow-up fix pushed; issue reopened/commented with approval. |
 | 2026-06-27 | Maintain -> Ship | `.github/maintainer/reports/2026-06-27T19-02-15Z/summary.md` | One open issue triaged; local fix implemented for optional endpoint permission-denied warning spam; tests green. |

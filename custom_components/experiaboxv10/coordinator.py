@@ -128,6 +128,38 @@ class ExperiaBoxV10Coordinator(DataUpdateCoordinator[ExperiaBoxV10Data]):
         self._last_traffic_time = current_time
         return throughput_down, throughput_up
 
+    def _preserve_transient_router_info(self, router_info: RouterInfo) -> RouterInfo:
+        """Preserve previous router uptime when the router briefly reports zero."""
+        if (
+            self.data is None
+            or router_info.uptime != 0
+            or self.data.router_info.uptime <= 0
+        ):
+            return router_info
+
+        _LOGGER.debug("Ignoring transient zero router uptime during update")
+        return router_info._replace(uptime=self.data.router_info.uptime)
+
+    def _preserve_transient_traffic_info(
+        self,
+        traffic_info: TrafficInfo,
+        traffic_info_current: bool,
+        router_reboot_detected: bool,
+    ) -> tuple[TrafficInfo, bool]:
+        """Preserve previous traffic counters when the router briefly reports zeros."""
+        if not traffic_info_current or self.data is None or router_reboot_detected:
+            return traffic_info, traffic_info_current
+
+        current_counters = tuple(traffic_info)
+        previous_counters = tuple(self.data.traffic_info)
+        if all(value == 0 for value in current_counters) and any(
+            value > 0 for value in previous_counters
+        ):
+            _LOGGER.debug("Ignoring transient zero traffic counters during update")
+            return self.data.traffic_info, False
+
+        return traffic_info, traffic_info_current
+
     def _detect_new_devices(self, current_time: float, devices: list[Device]) -> bool:
         """Track devices and detect newly connected ones."""
         current_macs = {device.mac for device in devices}
@@ -215,8 +247,10 @@ class ExperiaBoxV10Coordinator(DataUpdateCoordinator[ExperiaBoxV10Data]):
                 
             if isinstance(results[3], Exception):
                 traffic_info = self.data.traffic_info if self.data else TrafficInfo(0, 0, 0, 0)
+                traffic_info_current = False
             else:
                 traffic_info = results[3]
+                traffic_info_current = True
                 
             if isinstance(results[4], Exception):
                 guest_wifi_enabled = self.data.guest_wifi_enabled if self.data else False
@@ -230,10 +264,31 @@ class ExperiaBoxV10Coordinator(DataUpdateCoordinator[ExperiaBoxV10Data]):
 
             self._log_partial_update_failures(results)
 
+            router_reboot_detected = (
+                self.data is not None
+                and 0 < router_info.uptime < self.data.router_info.uptime
+            )
+            router_info = self._preserve_transient_router_info(router_info)
+            traffic_info, traffic_info_current = self._preserve_transient_traffic_info(
+                traffic_info,
+                traffic_info_current,
+                router_reboot_detected,
+            )
+
             _LOGGER.debug("Successfully fetched data from ExperiaBox v10")
 
             current_time = time.monotonic()
-            throughput_down, throughput_up = self._calculate_throughput(current_time, traffic_info) if traffic_info else (0.0, 0.0)
+            if traffic_info_current:
+                throughput_down, throughput_up = self._calculate_throughput(
+                    current_time,
+                    traffic_info,
+                )
+            elif self.data:
+                throughput_down = self.data.throughput_down
+                throughput_up = self.data.throughput_up
+            else:
+                throughput_down = 0.0
+                throughput_up = 0.0
             new_device_detected = self._detect_new_devices(current_time, devices) if devices else False
 
             return ExperiaBoxV10Data(

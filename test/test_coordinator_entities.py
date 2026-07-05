@@ -154,6 +154,116 @@ async def test_coordinator_logs_optional_permission_denied_at_debug(coordinator,
     assert "Optional update unavailable for Wi-Fi status" in caplog.text
 
 @pytest.mark.asyncio
+async def test_coordinator_preserves_transient_zero_uptime(coordinator, caplog):
+    """Test transient zero uptime does not create a sensor history dip."""
+    mock_devices = [Device("MAC1", "Name1", "1.1.1.1", True)]
+    previous_router_info = RouterInfo("H369A", "V1.0", "V10.C.25.08.15", "SN1", 3600)
+    current_router_info = RouterInfo("H369A", "V1.0", "V10.C.25.08.15", "SN1", 0)
+    mock_wan_info = WanInfo("8.8.8.8", True, "Up")
+    mock_traffic_info = TrafficInfo(1000, 2000, 10, 20)
+    coordinator.data = ExperiaBoxV10Data(
+        mock_devices,
+        previous_router_info,
+        mock_wan_info,
+        mock_traffic_info,
+        False,
+        True,
+    )
+
+    coordinator.api.get_devices = AsyncMock(return_value=mock_devices)
+    coordinator.api.get_router_info = AsyncMock(return_value=current_router_info)
+    coordinator.api.get_wan_info = AsyncMock(return_value=mock_wan_info)
+    coordinator.api.get_traffic_info = AsyncMock(return_value=mock_traffic_info)
+    coordinator.api.get_guest_wifi_enabled = AsyncMock(return_value=False)
+    coordinator.api.get_wifi_enabled = AsyncMock(return_value=True)
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.experiaboxv10.coordinator"):
+        data = await coordinator._async_update_data()
+
+    assert data.router_info == current_router_info._replace(uptime=3600)
+    assert "Ignoring transient zero router uptime during update" in caplog.text
+
+@pytest.mark.asyncio
+async def test_coordinator_preserves_transient_zero_traffic_counters(coordinator, caplog):
+    """Test transient zero traffic counters do not reset sensors or throughput baseline."""
+    mock_devices = [Device("MAC1", "Name1", "1.1.1.1", True)]
+    mock_router_info = RouterInfo("H369A", "V1.0", "V10.C.25.08.15", "SN1", 3600)
+    mock_wan_info = WanInfo("8.8.8.8", True, "Up")
+    previous_traffic_info = TrafficInfo(1000, 2000, 10, 20)
+    zero_traffic_info = TrafficInfo(0, 0, 0, 0)
+    coordinator.data = ExperiaBoxV10Data(
+        mock_devices,
+        mock_router_info,
+        mock_wan_info,
+        previous_traffic_info,
+        False,
+        True,
+        throughput_down=12.0,
+        throughput_up=6.0,
+    )
+    coordinator._last_traffic_info = previous_traffic_info
+    coordinator._last_traffic_time = 100.0
+
+    coordinator.api.get_devices = AsyncMock(return_value=mock_devices)
+    coordinator.api.get_router_info = AsyncMock(return_value=mock_router_info)
+    coordinator.api.get_wan_info = AsyncMock(return_value=mock_wan_info)
+    coordinator.api.get_traffic_info = AsyncMock(return_value=zero_traffic_info)
+    coordinator.api.get_guest_wifi_enabled = AsyncMock(return_value=False)
+    coordinator.api.get_wifi_enabled = AsyncMock(return_value=True)
+
+    with (
+        caplog.at_level(logging.DEBUG, logger="custom_components.experiaboxv10.coordinator"),
+        patch("time.monotonic", return_value=130.0),
+    ):
+        data = await coordinator._async_update_data()
+
+    assert data.traffic_info == previous_traffic_info
+    assert data.throughput_down == 12.0
+    assert data.throughput_up == 6.0
+    assert coordinator._last_traffic_info == previous_traffic_info
+    assert coordinator._last_traffic_time == 100.0
+    assert "Ignoring transient zero traffic counters during update" in caplog.text
+
+@pytest.mark.asyncio
+async def test_coordinator_accepts_zero_traffic_counters_after_reboot(coordinator):
+    """Test zero traffic counters are accepted when uptime confirms a reboot."""
+    mock_devices = [Device("MAC1", "Name1", "1.1.1.1", True)]
+    previous_router_info = RouterInfo("H369A", "V1.0", "V10.C.25.08.15", "SN1", 3600)
+    current_router_info = RouterInfo("H369A", "V1.0", "V10.C.25.08.15", "SN1", 30)
+    mock_wan_info = WanInfo("8.8.8.8", True, "Up")
+    previous_traffic_info = TrafficInfo(1000, 2000, 10, 20)
+    zero_traffic_info = TrafficInfo(0, 0, 0, 0)
+    coordinator.data = ExperiaBoxV10Data(
+        mock_devices,
+        previous_router_info,
+        mock_wan_info,
+        previous_traffic_info,
+        False,
+        True,
+        throughput_down=12.0,
+        throughput_up=6.0,
+    )
+    coordinator._last_traffic_info = previous_traffic_info
+    coordinator._last_traffic_time = 100.0
+
+    coordinator.api.get_devices = AsyncMock(return_value=mock_devices)
+    coordinator.api.get_router_info = AsyncMock(return_value=current_router_info)
+    coordinator.api.get_wan_info = AsyncMock(return_value=mock_wan_info)
+    coordinator.api.get_traffic_info = AsyncMock(return_value=zero_traffic_info)
+    coordinator.api.get_guest_wifi_enabled = AsyncMock(return_value=False)
+    coordinator.api.get_wifi_enabled = AsyncMock(return_value=True)
+
+    with patch("time.monotonic", return_value=130.0):
+        data = await coordinator._async_update_data()
+
+    assert data.router_info == current_router_info
+    assert data.traffic_info == zero_traffic_info
+    assert data.throughput_down == 0.0
+    assert data.throughput_up == 0.0
+    assert coordinator._last_traffic_info == zero_traffic_info
+    assert coordinator._last_traffic_time == 130.0
+
+@pytest.mark.asyncio
 async def test_coordinator_throughput(coordinator):
     """Test throughput calculation in coordinator."""
     mock_router_info = RouterInfo("H369A", "V1.0", "V10.C.26.04", "SN1", 100)

@@ -48,3 +48,25 @@ Fix pushed to `master` in 1148e94 on 2026-07-05.
 Owner comment posted on 2026-07-05:
 
 - https://github.com/adrighem/ha-kpn-experia-v10/issues/11#issuecomment-4884962056
+
+## 2026-07-05 Follow-up
+
+Reporter confirmed the released session-renewal fix keeps the connection active after the router timeout, but observed a brief uptime graph dip to `0` near reconnect:
+
+- `ISSUE:11:C:3`: connection stays active; uptime sensor temporarily drops to `0` around reconnect.
+
+Local follow-up implemented but not pushed:
+
+- Preserve previous router uptime when a successful poll briefly reports uptime `0` after prior nonzero uptime.
+- Preserve previous traffic counters when a successful poll briefly reports all-zero counters after prior nonzero counters.
+- Do not advance the throughput baseline while preserved traffic counters are reused, avoiding an inflated speed calculation on the next valid poll.
+- Accept all-zero traffic counters when uptime confirms a real router reboot.
+
+Verification:
+
+- `PYTHONPATH=. uv run --with aiohttp --with voluptuous --with pytest --with pytest-asyncio pytest test/test_coordinator_entities.py`: 13 passed.
+- `PYTHONPATH=. uv run --with aiohttp --with voluptuous --with pytest --with pytest-asyncio pytest`: 46 passed.
+
+Public action status:
+
+- No public action taken for this follow-up yet.
