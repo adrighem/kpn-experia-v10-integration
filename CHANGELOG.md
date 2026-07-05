@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.2.5](https://github.com/adrighem/ha-kpn-experia-v10/compare/v3.2.4...v3.2.5) (2026-07-05)
+
+
+### Bug Fixes
+
+* preserve transient reconnect counters ([a978b66](https://github.com/adrighem/ha-kpn-experia-v10/commit/a978b667f0d962fdac8e279e8dd456b4239c8a46)), closes [#11](https://github.com/adrighem/ha-kpn-experia-v10/issues/11)
+* proactively renew router context ([04762c4](https://github.com/adrighem/ha-kpn-experia-v10/commit/04762c49cb94281e83f9c331160ccd0c01731cb3)), closes [#11](https://github.com/adrighem/ha-kpn-experia-v10/issues/11)
+
 ## [3.2.4](https://github.com/adrighem/ha-kpn-experia-v10/compare/v3.2.3...v3.2.4) (2026-07-05)
 
 
