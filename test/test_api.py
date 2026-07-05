@@ -145,9 +145,63 @@ async def test_get_traffic_info(api, mock_session):
     assert info.bytes_received == 2000
 
 @pytest.mark.asyncio
-async def test_get_guest_wifi_enabled_handles_196618(api, mock_session):
-    """Test that get_guest_wifi_enabled safely catches the 196618 disabled error."""
+async def test_get_guest_wifi_enabled_uses_nmc_guest(api, mock_session):
+    """Test get_guest_wifi_enabled uses NMC.Guest as the primary endpoint."""
     mock_login_resp = create_mock_response(status=200, json_data={"data": {"contextID": "abc"}})
+    mock_data_resp = create_mock_response(
+        status=200,
+        json_data={"status": {"Enable": True}},
+    )
+    mock_session.post.side_effect = [mock_login_resp, mock_data_resp]
+
+    enabled = await api.get_guest_wifi_enabled()
+
+    assert enabled is True
+    request_payload = mock_session.post.call_args_list[1].kwargs["json"]
+    assert request_payload["service"] == "NMC.Guest"
+    assert request_payload["method"] == "get"
+
+@pytest.mark.asyncio
+async def test_get_guest_wifi_enabled_falls_back_to_radio(api, mock_session):
+    """Test Guest Wi-Fi status falls back to the Wi-Fi radio list."""
+    mock_login_resp_1 = create_mock_response(status=200, json_data={"data": {"contextID": "abc"}})
+    mock_guest_error_resp = create_mock_response(
+        status=200,
+        json_data={"errors": [{"error": "196618"}]},
+    )
+    mock_login_resp_2 = create_mock_response(status=200, json_data={"data": {"contextID": "def"}})
+    mock_radio_resp = create_mock_response(
+        status=200,
+        json_data={
+            "status": [
+                {"SSID": "KPN", "Enable": True},
+                {"SSID": "KPN Guest", "Enable": False},
+            ]
+        },
+    )
+    mock_session.post.side_effect = [
+        mock_login_resp_1,
+        mock_guest_error_resp,
+        mock_login_resp_2,
+        mock_radio_resp,
+    ]
+
+    enabled = await api.get_guest_wifi_enabled()
+
+    assert enabled is False
+    request_payload = mock_session.post.call_args_list[3].kwargs["json"]
+    assert request_payload["service"] == "sah.Device.WiFi.Radio"
+    assert request_payload["method"] == "get"
+
+@pytest.mark.asyncio
+async def test_get_guest_wifi_enabled_radio_fallback_handles_196618(api, mock_session):
+    """Test the radio fallback safely catches the 196618 disabled error."""
+    mock_login_resp_1 = create_mock_response(status=200, json_data={"data": {"contextID": "abc"}})
+    mock_guest_error_resp = create_mock_response(
+        status=200,
+        json_data={"errors": [{"error": "196618"}]},
+    )
+    mock_login_resp_2 = create_mock_response(status=200, json_data={"data": {"contextID": "def"}})
     mock_data_resp = create_mock_response(
         status=200,
         json_data={
@@ -157,11 +211,71 @@ async def test_get_guest_wifi_enabled_handles_196618(api, mock_session):
             ]
         }
     )
+    mock_session.post.side_effect = [
+        mock_login_resp_1,
+        mock_guest_error_resp,
+        mock_login_resp_2,
+        mock_data_resp,
+    ]
+
+    enabled = await api.get_guest_wifi_enabled()
+
+    assert enabled is False
+
+@pytest.mark.asyncio
+async def test_set_guest_wifi_uses_nmc_guest(api, mock_session):
+    """Test set_guest_wifi uses NMC.Guest as the primary endpoint."""
+    mock_login_resp = create_mock_response(status=200, json_data={"data": {"contextID": "abc"}})
+    mock_data_resp = create_mock_response(status=200, json_data={"status": True})
     mock_session.post.side_effect = [mock_login_resp, mock_data_resp]
 
-    # This shouldn't raise an exception
-    enabled = await api.get_guest_wifi_enabled()
-    assert enabled is False
+    await api.set_guest_wifi(False)
+
+    request_payload = mock_session.post.call_args_list[1].kwargs["json"]
+    assert request_payload == {
+        "service": "NMC.Guest",
+        "method": "set",
+        "parameters": {"Enable": False},
+    }
+
+@pytest.mark.asyncio
+async def test_set_guest_wifi_falls_back_to_radio(api, mock_session):
+    """Test set_guest_wifi falls back to the Wi-Fi radio UID flow."""
+    mock_login_resp_1 = create_mock_response(status=200, json_data={"data": {"contextID": "abc"}})
+    mock_guest_error_resp = create_mock_response(
+        status=200,
+        json_data={"errors": [{"error": "196618"}]},
+    )
+    mock_login_resp_2 = create_mock_response(status=200, json_data={"data": {"contextID": "def"}})
+    mock_radio_get_resp = create_mock_response(
+        status=200,
+        json_data={
+            "status": [
+                {"SSID": "KPN", "UID": "private", "Enable": True},
+                {"SSID": "KPN Guest", "UID": "guest", "Enable": False},
+            ]
+        },
+    )
+    mock_radio_set_resp = create_mock_response(status=200, json_data={"status": True})
+    mock_session.post.side_effect = [
+        mock_login_resp_1,
+        mock_guest_error_resp,
+        mock_login_resp_2,
+        mock_radio_get_resp,
+        mock_radio_set_resp,
+    ]
+
+    await api.set_guest_wifi(True)
+
+    radio_get_payload = mock_session.post.call_args_list[3].kwargs["json"]
+    radio_set_payload = mock_session.post.call_args_list[4].kwargs["json"]
+    assert radio_get_payload["service"] == "sah.Device.WiFi.Radio"
+    assert radio_get_payload["method"] == "get"
+    assert radio_set_payload == {
+        "service": "sah.Device.WiFi.Radio",
+        "method": "set",
+        "parameters": {"uid": "guest", "Enable": True},
+    }
 
 @pytest.mark.asyncio
 async def test_request_retries_auth_once(api, mock_session):

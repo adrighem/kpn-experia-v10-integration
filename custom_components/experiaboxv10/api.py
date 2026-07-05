@@ -492,6 +492,18 @@ class ExperiaBoxV10Api:
 
     async def get_guest_wifi_enabled(self) -> bool:
         """Get Guest Wi-Fi status."""
+        try:
+            data = await self._request("NMC.Guest", "get", endpoint="ws")
+            status = data.get("status", {})
+            if isinstance(status, dict):
+                return bool(status.get("Enable", False))
+        except ExperiaBoxV10ApiError as err:
+            _LOGGER.debug("Failed to get Guest Wi-Fi via NMC.Guest: %s", err)
+
+        return await self._get_guest_wifi_enabled_from_radio()
+
+    async def _get_guest_wifi_enabled_from_radio(self) -> bool:
+        """Get Guest Wi-Fi status from the Wi-Fi radio list."""
         data = await self._request("sah.Device.WiFi.Radio", "get", endpoint="ws")
         status = data.get("status")
         if not isinstance(status, list):
@@ -504,6 +516,16 @@ class ExperiaBoxV10Api:
 
     async def set_guest_wifi(self, enable: bool) -> None:
         """Enable or disable Guest Wi-Fi."""
+        try:
+            await self._request("NMC.Guest", "set", {"Enable": enable}, endpoint="ws")
+            return
+        except ExperiaBoxV10ApiError as err:
+            _LOGGER.debug("Failed to set Guest Wi-Fi via NMC.Guest: %s", err)
+
+        await self._set_guest_wifi_from_radio(enable)
+
+    async def _set_guest_wifi_from_radio(self, enable: bool) -> None:
+        """Enable or disable Guest Wi-Fi through the Wi-Fi radio list."""
         data = await self._request("sah.Device.WiFi.Radio", "get", endpoint="ws")
         status = data.get("status")
         if not isinstance(status, list):

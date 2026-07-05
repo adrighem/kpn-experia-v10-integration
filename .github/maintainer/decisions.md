@@ -1,5 +1,11 @@
 # Maintainer Decisions
 
+## 2026-07-05 - Prefer NMC.Guest for guest Wi-Fi
+
+- The Domoticz Experia v10 plugin uses `NMC.Guest` for guest Wi-Fi get/set after moving away from scanning `sah.Device.WiFi.Radio`.
+- Decided the Home Assistant integration should use `NMC.Guest` as the primary guest Wi-Fi endpoint because `sah.Device.WiFi.Radio` has been fragile on firmware `V10.C.25.08.15`.
+- Kept the existing `sah.Device.WiFi.Radio` UID flow as fallback for older firmware or routers that do not expose `NMC.Guest`.
+
 ## 2026-07-05 - Broaden stale-session renewal handling
 
 - `ISSUE:11` reports that firmware `V10.C.25.08.15` stops updating after the router's 30-minute HTTP session timeout.
